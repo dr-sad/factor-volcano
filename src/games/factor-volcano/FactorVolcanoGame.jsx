@@ -186,15 +186,6 @@ export default function FactorVolcanoGame() {
   }, [hoveredBlock, blocks, present]);
   const hoveredSupportIds = useMemo(() => new Set(hoveredSupporters.map((b) => b.id)), [hoveredSupporters]);
 
-  const hoveredComputed = useMemo(() => {
-    if (!hoveredBlock) return null;
-    const sups = hoveredSupporters;
-    const product = sups.reduce((acc, s) => acc * s.value, 1);
-    const okFactor = sups.length >= 2 && product === hoveredBlock.value;
-    const okStable = isStable(hoveredBlock, blocks, present);
-    return { product, okFactor, okStable, supporterCount: sups.length };
-  }, [hoveredBlock, hoveredSupporters, blocks, present]);
-
   const maxRight = useMemo(() => Math.max(...blocks.map((b) => b.x + b.w)), [blocks]);
   const svgW = maxRight + SVG_PAD * 2;
   const rowStep = BLOCK_H + GAP;
@@ -439,20 +430,6 @@ export default function FactorVolcanoGame() {
     return s;
   }, [blocks]);
 
-  const hoveredDisplay = useMemo(() => {
-    if (!hoveredBlock) return "";
-    const sups = hoveredSupporters;
-    if (sups.length === 0) return `Hovered ${hoveredBlock.value}. No supporting blocks overlap.`;
-    const product = hoveredComputed?.product ?? sups.reduce((acc, s) => acc * s.value, 1);
-    const okFactor = hoveredComputed?.okFactor;
-    const okStable = hoveredComputed?.okStable;
-    const supportVals = sups.map((s) => s.value).join(" · ");
-
-    return `Hovered ${hoveredBlock.value}. Supports: ${supportVals}. Product: ${product}. Factor match: ${
-      okFactor ? "yes" : "no"
-    }. Stability: ${okStable ? "yes" : "no"}.`;
-  }, [hoveredBlock, hoveredSupporters, hoveredComputed]);
-
   return (
     <div
       style={{
@@ -551,26 +528,6 @@ export default function FactorVolcanoGame() {
           }}
         >
           {hintMessage}
-        </div>
-      )}
-
-      {hoveredDisplay && !busy && !won && !lost && (
-        <div
-          style={{
-            width: "100%",
-            maxWidth: 720,
-            marginBottom: 10,
-            padding: "10px 14px",
-            borderRadius: 8,
-            background: "#f7fafc",
-            border: "2px solid #e2e8f0",
-            color: "#1a202c",
-            fontWeight: 700,
-            fontSize: 12.5,
-            lineHeight: 1.45,
-          }}
-        >
-          {hoveredDisplay}
         </div>
       )}
 
