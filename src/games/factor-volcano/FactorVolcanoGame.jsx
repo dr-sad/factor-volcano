@@ -12,7 +12,7 @@ import {
   TOTAL_FALL_ANIM,
   PROGRESS_KEY,
 } from "./constants.js";
-import { supporters, isStable, findCascade, checkWin, computeConnections, overlapPx } from "./physics.js";
+import { supporters, findCascade, checkWin, computeConnections, overlapPx } from "./physics.js";
 
 function buildBlocks(puzzle) {
   const blocks = [];
@@ -100,53 +100,24 @@ function countMaxRow(blocks) {
   return Math.max(...blocks.map((b) => b.row));
 }
 
-function applyCascadeToSet(allBlocks, presentSet) {
-  const falling = findCascade(allBlocks, presentSet);
-  if (falling.length === 0) return presentSet;
-  const next = new Set(presentSet);
-  falling.forEach((id) => next.delete(id));
-  return next;
-}
-
-function scoreCandidate({ allBlocks, candidateId, basePresentSet, topRow }) {
-  const base = new Set(basePresentSet);
-  base.delete(candidateId);
-
-  const afterCascade = applyCascadeToSet(allBlocks, base);
-  const topStillPresent = allBlocks.some((b) => b.row === topRow && afterCascade.has(b.id));
-  if (!topStillPresent) return { score: -Infinity, resultingPresent: afterCascade };
-
-  // Score by "how many blocks are currently satisfying the win constraints".
-  let score = 0;
-  for (const b of allBlocks) {
-    if (!afterCascade.has(b.id)) continue;
-    if (b.row === 0) continue;
-
-    const sups = supporters(b, allBlocks, afterCascade);
-    const okStable = isStable(b, allBlocks, afterCascade);
-    if (!okStable) continue;
-
-    if (sups.length >= 2) {
-      const product = sups.reduce((acc, s) => acc * s.value, 1);
-      if (product === b.value) score += 2;
-      else score += 0.25;
-    } else {
-      score += 0.25;
-    }
-  }
-
-  return { score, resultingPresent: afterCascade };
-}
-
 const FONT = `'Inter', 'Helvetica Neue', Arial, sans-serif`;
 
-export default function FactorVolcanoGame() {
-  const [puzzleIdx, setPuzzleIdx] = useState(0);
-  const [blocks, setBlocks] = useState(() => buildBlocks(PUZZLES[0]));
-  const [present, setPresent] = useState(() => new Set(buildBlocks(PUZZLES[0]).map((b) => b.id)));
+export default function FactorVolcanoGame({ initialPuzzleIdx = 0, mode = "today" }) {
+  const allowedPuzzleIndices = useMemo(() => {
+    if (mode === "tutorial") return [0];
+    return PUZZLES.map((_, i) => i).filter((i) => i !== 0);
+  }, [mode]);
+
+  const resolvedInitialPuzzleIdx = allowedPuzzleIndices.includes(initialPuzzleIdx)
+    ? initialPuzzleIdx
+    : allowedPuzzleIndices[0];
+
+  const [puzzleIdx, setPuzzleIdx] = useState(resolvedInitialPuzzleIdx);
+  const [blocks, setBlocks] = useState(() => buildBlocks(PUZZLES[resolvedInitialPuzzleIdx]));
+  const [present, setPresent] = useState(() =>
+    new Set(buildBlocks(PUZZLES[resolvedInitialPuzzleIdx]).map((b) => b.id)),
+  );
   const [hovered, setHovered] = useState(null);
-  const [hinted, setHinted] = useState(null);
-  const [revealSolution, setRevealSolution] = useState(false);
 
   const [fallingSet, setFallingSet] = useState(new Set());
   const [fallFrames, setFallFrames] = useState({});
@@ -160,9 +131,6 @@ export default function FactorVolcanoGame() {
 
   const [winAnimRow, setWinAnimRow] = useState(-1);
   const [progress, setProgress] = useState(() => loadProgress());
-  const [hintMessage, setHintMessage] = useState("");
-  const [hintsUsed, setHintsUsed] = useState(0);
-  const MAX_HINTS = 3;
 
   const animRef = useRef(null);
   const winTimerRef = useRef(null);
@@ -197,6 +165,7 @@ export default function FactorVolcanoGame() {
   const bcy = (block) => by(block) + BLOCK_H / 2;
 
   const loadPuzzle = (idx) => {
+    if (!allowedPuzzleIndices.includes(idx)) return;
     if (animRef.current) cancelAnimationFrame(animRef.current);
     if (winTimerRef.current) clearTimeout(winTimerRef.current);
 
@@ -205,8 +174,6 @@ export default function FactorVolcanoGame() {
     setBlocks(newBlocks);
     setPresent(new Set(newBlocks.map((b) => b.id)));
     setHovered(null);
-    setHinted(null);
-    setRevealSolution(false);
     setFallingSet(new Set());
     setFallFrames({});
     setWon(false);
@@ -218,9 +185,13 @@ export default function FactorVolcanoGame() {
 
     setWinAnimRow(-1);
     setShowSolved(false);
-    setHintMessage("");
-    setHintsUsed(0);
   };
+
+  useEffect(() => {
+    loadPuzzle(resolvedInitialPuzzleIdx);
+    // The intent is to rehydrate board when App chooses a start puzzle.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolvedInitialPuzzleIdx, mode]);
 
   // Win animation
   useEffect(() => {
@@ -320,10 +291,6 @@ export default function FactorVolcanoGame() {
       if (busy || won || lost || !present.has(block.id)) return;
       if (block.row === topRowAll) return;
 
-      setHinted(null);
-      setRevealSolution(false);
-      setHintMessage("");
-
       setBusy(true);
       setHistory((h) => [...h, present]);
       setMoves((m) => m + 1);
@@ -345,8 +312,6 @@ export default function FactorVolcanoGame() {
 
     setPresent(new Set(blocks.map((b) => b.id)));
     setHovered(null);
-    setHinted(null);
-    setRevealSolution(false);
     setFallingSet(new Set());
     setFallFrames({});
     setWon(false);
@@ -356,8 +321,6 @@ export default function FactorVolcanoGame() {
     setMoves(0);
     setShowSolved(false);
     setWinAnimRow(-1);
-    setHintMessage("");
-    setHintsUsed(0);
     progressUpdatedRef.current = false;
   };
 
@@ -367,68 +330,9 @@ export default function FactorVolcanoGame() {
     setPresent(prev);
     setHistory((h) => h.slice(0, -1));
     setMoves((m) => Math.max(0, m - 1));
-    setHinted(null);
-    setRevealSolution(false);
-    setHintMessage("");
   };
 
   const connections = won ? computeConnections(blocks, present) : [];
-
-  const hintAvailable = !busy && !won && !lost && hintsUsed < MAX_HINTS;
-
-  const computeBestHint = useCallback(() => {
-    if (!hintAvailable) return;
-    setHintMessage("");
-    setHinted(null);
-
-    const legal = blocks.filter((b) => present.has(b.id) && b.row !== topRowAll);
-    if (legal.length === 0) {
-      setHintMessage("No legal removals.");
-      return;
-    }
-
-    let bestId = null;
-    let bestScore = -Infinity;
-
-    for (const cand of legal) {
-      const { score } = scoreCandidate({
-        allBlocks: blocks,
-        candidateId: cand.id,
-        basePresentSet: present,
-        topRow: topRowAll,
-      });
-
-      if (score > bestScore) {
-        bestScore = score;
-        bestId = cand.id;
-      }
-    }
-
-    if (!bestId || bestScore === -Infinity) {
-      setHintMessage("All moves would collapse the top row. Try a different approach.");
-      return;
-    }
-
-    setHinted(bestId);
-    setHintsUsed((h) => h + 1);
-
-    const b = blockMap[bestId];
-    const sups = supporters(b, blocks, present);
-    const product = sups.reduce((acc, s) => acc * s.value, 1);
-    setHintMessage(
-      `Hint: remove ${b.value} (row ${b.row}). It maximizes currently-satisfied factor constraints.`,
-    );
-    return { bestScore, bestId, product };
-  }, [hintAvailable, blocks, present, topRowAll, blockMap]);
-
-  const showSolution = won && revealSolution;
-  const intendedSolutionIds = useMemo(() => {
-    const s = new Set();
-    blocks.forEach((b) => {
-      if (b.isSolution) s.add(b.id);
-    });
-    return s;
-  }, [blocks]);
 
   return (
     <div
@@ -477,7 +381,8 @@ export default function FactorVolcanoGame() {
       <h1 style={{ fontSize: 28, fontWeight: 900, letterSpacing: "0.04em", margin: "0 0 12px" }}>FACTOR HENGE</h1>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap", justifyContent: "center" }}>
-        {PUZZLES.map((p, i) => {
+        {allowedPuzzleIndices.map((i) => {
+          const p = PUZZLES[i];
           const bestMoves = progress.bestMoves?.[p.name];
           const isSolved = !!progress.solved?.[p.name];
           return (
@@ -511,25 +416,6 @@ export default function FactorVolcanoGame() {
           (and it must be stable). If the entire top row collapses, you lose.
         </p>
       </div>
-
-      {hintMessage && (
-        <div
-          style={{
-            width: "100%",
-            maxWidth: 720,
-            marginBottom: 10,
-            padding: "10px 14px",
-            borderRadius: 8,
-            background: "#f5f7ff",
-            border: "2px solid #c7d2fe",
-            color: "#3730a3",
-            fontWeight: 800,
-            letterSpacing: "0.02em",
-          }}
-        >
-          {hintMessage}
-        </div>
-      )}
 
       {showSolved && <div style={{ animation: "fadeIn 0.5s ease-out", padding: "10px 28px", marginBottom: 14, background: "#e8f5e9", border: "2px solid #4caf50", borderRadius: 8, fontSize: 16, fontWeight: 800, color: "#2e7d32" }}>SOLVED!</div>}
 
@@ -616,24 +502,16 @@ export default function FactorVolcanoGame() {
             if (isWinActivated) fill = "#e65100";
             else if (isHov) fill = "#3a5a8c";
 
-            const showSol = showSolution && intendedSolutionIds.has(block.id) && present.has(block.id);
-
             // Highlight outlines
             let stroke = "none";
             let strokeWidth = 0;
             if (isWinActivated) {
               stroke = "none";
-            } else if (hinted === block.id) {
-              stroke = "#111";
-              strokeWidth = 3;
             } else if (isHov) {
               stroke = "#00aaff";
               strokeWidth = 3;
             } else if (isHoveredSupport) {
               stroke = "#ffd166";
-              strokeWidth = 3;
-            } else if (showSol) {
-              stroke = "#00bcd4";
               strokeWidth = 3;
             }
 
@@ -687,26 +565,6 @@ export default function FactorVolcanoGame() {
             );
           })}
 
-          {/* Solution highlight circles */}
-          {showSolution &&
-            blocks
-              .filter((b) => present.has(b.id) && b.isSolution)
-              .map((block) => {
-                const r = Math.min(block.w / 2 - 4, BLOCK_H / 2 - 8, 18);
-                return (
-                  <circle
-                    key={`solc${block.id}`}
-                    cx={bcx(block)}
-                    cy={bcy(block)}
-                    r={r}
-                    fill="none"
-                    stroke="#00bcd4"
-                    strokeWidth={2.5}
-                    style={{ animation: "circleAppear 0.3s ease-out forwards" }}
-                  />
-                );
-              })}
-
           {/* Red circles (win activation) */}
           {won &&
             blocks
@@ -735,19 +593,6 @@ export default function FactorVolcanoGame() {
         </button>
         <button className="game-btn" onClick={reset}>
           Reset
-        </button>
-
-        <button className="game-btn" onClick={computeBestHint} disabled={!hintAvailable} style={{ width: 170 }}>
-          Hint{hintsUsed > 0 ? ` (${hintsUsed}/${MAX_HINTS})` : ""}
-        </button>
-
-        <button
-          className="game-btn"
-          onClick={() => setRevealSolution((v) => !v)}
-          disabled={!won}
-          style={{ width: 220 }}
-        >
-          {revealSolution ? "Hide Solution" : "Reveal Solution"}
         </button>
       </div>
 
