@@ -11,7 +11,7 @@ export default function App() {
     return (
       <HomePage
         onPlayToday={() => {
-          setStartPuzzleIdx(1);
+          setStartPuzzleIdx(2);
           setGameMode("today");
           setScreen("game");
         }}

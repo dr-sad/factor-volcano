@@ -85,9 +85,11 @@ export default function HomePage({ onPlayToday, onPlayTutorial }) {
           <IconShape />
         </div>
 
-        <p style={{ textAlign: "center", fontSize: 36, lineHeight: 1.35, margin: "0 6px 34px", fontWeight: 500 }}>
-          Remove number blocks until every block is supported by two or more factors. If the blocks above are not
-          supported by blocks below, the structure collapses.
+        <p style={{ textAlign: "center", fontSize: 28, lineHeight: 1.4, margin: "0 6px 34px", fontWeight: 500 }}>
+          Remove number blocks until every block is supported by two or more factors.
+          <br />
+          <br />
+          If the blocks above are not supported by blocks below, the structure collapses.
         </p>
 
         <div style={{ display: "grid", gap: 14 }}>

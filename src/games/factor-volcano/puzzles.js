@@ -44,7 +44,7 @@ export const PUZZLES = [
     name: "3",
     rows: [
       [
-        { v: 4, w: 1.6, sol: false },
+        { v: 3, w: 1.6, sol: false },
         { v: 2, w: 1.5, sol: true },
         { v: 2, w: 1.5, sol: true },
         { v: 2, w: 1.5, sol: true },
@@ -128,18 +128,18 @@ export const PUZZLES = [
       [
         { v: 3, w: 1.7, sol: false },
         { v: 2, w: 1.6, sol: false },
-        { v: 2, w: 1.6, sol: true },
+        { v: 5, w: 1.6, sol: true },
         { v: 4, w: 1.9, sol: true },
-        { v: 3, w: 1.7, sol: false },
-        { v: 5, w: 1.8, sol: true },
+        { v: 2, w: 1.7, sol: false },
+        { v: 4, w: 1.8, sol: true },
         { v: 5, w: 1.8, sol: true },
         { v: 4, w: 1.9, sol: false },
         { v: 2, w: 1.6, sol: false },
       ],
       [
-        { v: 8, w: 5.0, sol: true },
-        { v: 10, w: 2.0, sol: false },
-        { v: 25, w: 3.6, sol: true },
+        { v: 25, w: 3.8, sol: true },
+        { v: 10, w: 3.8, sol: false },
+        { v: 8, w: 3.8, sol: true },
         { v: 20, w: 3.8, sol: false },
       ],
       [{ v: 200, w: 9.0, sol: true }],
