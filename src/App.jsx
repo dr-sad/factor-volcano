@@ -24,6 +24,12 @@ export default function App() {
     );
   }
 
-  return <FactorVolcanoGame initialPuzzleIdx={startPuzzleIdx} mode={gameMode} />;
+  return (
+    <FactorVolcanoGame
+      initialPuzzleIdx={startPuzzleIdx}
+      mode={gameMode}
+      onBackHome={() => setScreen("home")}
+    />
+  );
 }
 

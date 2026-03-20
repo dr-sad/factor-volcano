@@ -12,7 +12,7 @@ import {
   TOTAL_FALL_ANIM,
   PROGRESS_KEY,
 } from "./constants.js";
-import { supporters, findCascade, checkWin, computeConnections, overlapPx } from "./physics.js";
+import { findCascade, checkWin, computeConnections, overlapPx } from "./physics.js";
 
 function buildBlocks(puzzle) {
   const blocks = [];
@@ -74,16 +74,15 @@ function getFallTransform(frame, blockX, blockY, blockW) {
 
 function loadProgress() {
   try {
-    if (typeof window === "undefined") return { bestMoves: {}, solved: {} };
+    if (typeof window === "undefined") return { solved: {} };
     const raw = window.localStorage.getItem(PROGRESS_KEY);
-    if (!raw) return { bestMoves: {}, solved: {} };
+    if (!raw) return { solved: {} };
     const parsed = JSON.parse(raw);
     return {
-      bestMoves: parsed.bestMoves || {},
       solved: parsed.solved || {},
     };
   } catch {
-    return { bestMoves: {}, solved: {} };
+    return { solved: {} };
   }
 }
 
@@ -102,7 +101,7 @@ function countMaxRow(blocks) {
 
 const FONT = `'Inter', 'Helvetica Neue', Arial, sans-serif`;
 
-export default function FactorVolcanoGame({ initialPuzzleIdx = 0, mode = "today" }) {
+export default function FactorVolcanoGame({ initialPuzzleIdx = 0, mode = "today", onBackHome }) {
   const allowedPuzzleIndices = useMemo(() => {
     if (mode === "tutorial") return [0];
     return PUZZLES.map((_, i) => i).filter((i) => i !== 0);
@@ -117,7 +116,7 @@ export default function FactorVolcanoGame({ initialPuzzleIdx = 0, mode = "today"
   const [present, setPresent] = useState(() =>
     new Set(buildBlocks(PUZZLES[resolvedInitialPuzzleIdx]).map((b) => b.id)),
   );
-  const [hovered, setHovered] = useState(null);
+  const [pendingRemoveId, setPendingRemoveId] = useState(null);
 
   const [fallingSet, setFallingSet] = useState(new Set());
   const [fallFrames, setFallFrames] = useState({});
@@ -126,7 +125,6 @@ export default function FactorVolcanoGame({ initialPuzzleIdx = 0, mode = "today"
   const [busy, setBusy] = useState(false);
 
   const [history, setHistory] = useState([]);
-  const [moves, setMoves] = useState(0);
   const [showSolved, setShowSolved] = useState(false);
 
   const [winAnimRow, setWinAnimRow] = useState(-1);
@@ -147,13 +145,6 @@ export default function FactorVolcanoGame({ initialPuzzleIdx = 0, mode = "today"
     return m;
   }, [blocks]);
 
-  const hoveredBlock = hovered ? blockMap[hovered] : null;
-  const hoveredSupporters = useMemo(() => {
-    if (!hoveredBlock) return [];
-    return supporters(hoveredBlock, blocks, present);
-  }, [hoveredBlock, blocks, present]);
-  const hoveredSupportIds = useMemo(() => new Set(hoveredSupporters.map((b) => b.id)), [hoveredSupporters]);
-
   const maxRight = useMemo(() => Math.max(...blocks.map((b) => b.x + b.w)), [blocks]);
   const svgW = maxRight + SVG_PAD * 2;
   const rowStep = BLOCK_H + GAP;
@@ -173,14 +164,13 @@ export default function FactorVolcanoGame({ initialPuzzleIdx = 0, mode = "today"
     setPuzzleIdx(idx);
     setBlocks(newBlocks);
     setPresent(new Set(newBlocks.map((b) => b.id)));
-    setHovered(null);
+    setPendingRemoveId(null);
     setFallingSet(new Set());
     setFallFrames({});
     setWon(false);
     setLost(false);
     setBusy(false);
     setHistory([]);
-    setMoves(0);
     progressUpdatedRef.current = false;
 
     setWinAnimRow(-1);
@@ -223,18 +213,14 @@ export default function FactorVolcanoGame({ initialPuzzleIdx = 0, mode = "today"
     progressUpdatedRef.current = true;
 
     setProgress((prev) => {
-      const bestMoves = { ...(prev.bestMoves || {}) };
       const solved = { ...(prev.solved || {}) };
-
-      const currentBest = bestMoves[puzzleKey];
-      if (currentBest === undefined || moves < currentBest) bestMoves[puzzleKey] = moves;
       solved[puzzleKey] = true;
 
-      const next = { bestMoves, solved };
+      const next = { solved };
       saveProgress(next);
       return next;
     });
-  }, [won, moves, puzzleKey]);
+  }, [won, puzzleKey]);
 
   const runFallAnimation = useCallback(
     (ids, afterPresent, currentBlocks) => {
@@ -290,11 +276,14 @@ export default function FactorVolcanoGame({ initialPuzzleIdx = 0, mode = "today"
     (block) => {
       if (busy || won || lost || !present.has(block.id)) return;
       if (block.row === topRowAll) return;
+      if (pendingRemoveId !== block.id) {
+        setPendingRemoveId(block.id);
+        return;
+      }
 
       setBusy(true);
       setHistory((h) => [...h, present]);
-      setMoves((m) => m + 1);
-      setHovered(null);
+      setPendingRemoveId(null);
 
       const next = new Set(present);
       next.delete(block.id);
@@ -303,7 +292,7 @@ export default function FactorVolcanoGame({ initialPuzzleIdx = 0, mode = "today"
       const cascade = findCascade(blocks, next);
       setTimeout(() => runFallAnimation(cascade, next, blocks), 60);
     },
-    [busy, won, lost, present, topRowAll, blocks, runFallAnimation],
+    [busy, won, lost, present, topRowAll, blocks, runFallAnimation, pendingRemoveId],
   );
 
   const reset = () => {
@@ -311,14 +300,13 @@ export default function FactorVolcanoGame({ initialPuzzleIdx = 0, mode = "today"
     if (winTimerRef.current) clearTimeout(winTimerRef.current);
 
     setPresent(new Set(blocks.map((b) => b.id)));
-    setHovered(null);
+    setPendingRemoveId(null);
     setFallingSet(new Set());
     setFallFrames({});
     setWon(false);
     setLost(false);
     setBusy(false);
     setHistory([]);
-    setMoves(0);
     setShowSolved(false);
     setWinAnimRow(-1);
     progressUpdatedRef.current = false;
@@ -329,7 +317,7 @@ export default function FactorVolcanoGame({ initialPuzzleIdx = 0, mode = "today"
     const prev = history[history.length - 1];
     setPresent(prev);
     setHistory((h) => h.slice(0, -1));
-    setMoves((m) => Math.max(0, m - 1));
+    setPendingRemoveId(null);
   };
 
   const connections = won ? computeConnections(blocks, present) : [];
@@ -351,14 +339,13 @@ export default function FactorVolcanoGame({ initialPuzzleIdx = 0, mode = "today"
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap');
         .blk { cursor: pointer; }
-        .blk:hover .body { filter: brightness(1.15); }
         @keyframes fadeIn { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:translateY(0); } }
         @keyframes circleAppear { from { r:0; opacity:0; } to { r:1; opacity:1; } }
         @keyframes lineGrow { from { stroke-dashoffset:500; } to { stroke-dashoffset:0; } }
         .game-btn {
           padding: 12px 0; width: 140px; background: #ffffff;
           border: 2px solid #d0d0d0; border-radius: 6px;
-          font-family: 'Inter', sans-serif; font-size: 13px;
+          font-family: 'Inter', sans-serif; font-size: 16px;
           font-weight: 600; letter-spacing: 0.08em;
           text-transform: uppercase; color: #999; cursor: pointer;
           transition: border-color 0.2s, color 0.2s;
@@ -369,52 +356,58 @@ export default function FactorVolcanoGame({ initialPuzzleIdx = 0, mode = "today"
           min-width: 48px; height: 44px; padding: 0 12px;
           border-radius: 8px; border: 2px solid #d0d0d0;
           background: #fff; font-family: 'Inter', sans-serif;
-          font-size: 14px; font-weight: 800; color: #999;
+          font-size: 18px; font-weight: 800; color: #999;
           cursor: pointer; transition: all 0.15s;
           display: flex; align-items: center; justify-content: center;
         }
         .pz-btn:hover { border-color: #888; color: #555; }
         .pz-btn.active { background: #2b4570; border-color: #2b4570; color: #fff; }
         .pz-btn.solved { border-color: #4caf50; }
+        .home-btn-icon {
+          position: absolute;
+          top: 18px;
+          left: 18px;
+          border: none;
+          background: transparent;
+          cursor: pointer;
+          color: #7c8797;
+          padding: 6px;
+          border-radius: 6px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .home-btn-icon:hover {
+          background: #eef2f7;
+          color: #586477;
+        }
       `}</style>
 
-      <h1 style={{ fontSize: 28, fontWeight: 900, letterSpacing: "0.04em", margin: "0 0 12px" }}>FACTOR HENGE</h1>
+      {onBackHome && (
+        <button className="home-btn-icon" onClick={onBackHome} aria-label="Back to home">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M12 3.2 3 10.6h2.5V21h6.1v-6.2h1V21h6.1V10.6H21L12 3.2z" />
+          </svg>
+        </button>
+      )}
+
+      <h1 style={{ fontSize: 46, fontWeight: 900, letterSpacing: "0.08em", margin: "0 0 14px" }}>FACTOR HENGE</h1>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap", justifyContent: "center" }}>
         {allowedPuzzleIndices.map((i) => {
           const p = PUZZLES[i];
-          const bestMoves = progress.bestMoves?.[p.name];
           const isSolved = !!progress.solved?.[p.name];
           return (
             <button
               key={i}
               className={`pz-btn ${i === puzzleIdx ? "active" : ""} ${isSolved ? "solved" : ""}`}
               onClick={() => loadPuzzle(i)}
-              title={isSolved ? `Solved in ${bestMoves} moves` : "Not solved yet"}
+              title={isSolved ? "Solved" : "Not solved yet"}
             >
               {p.name}
-              {typeof bestMoves === "number" ? ` (${bestMoves})` : ""}
             </button>
           );
         })}
-      </div>
-
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 24, margin: "0 0 14px" }}>
-        <span style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.06em", color: "#999", textTransform: "uppercase" }}>
-          Moves
-        </span>
-        <span style={{ fontSize: 28, fontWeight: 900, color: "#1a1a1a" }}>{moves}</span>
-      </div>
-
-      <div style={{ maxWidth: 720, width: "100%", marginBottom: 10 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: "#444", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>
-          Goal
-        </div>
-        <p style={{ margin: 0, fontSize: 13, lineHeight: 1.55, color: "#666" }}>
-          Remove blocks from the tower (never the top row directly). Any blocks that become unstable collapse away.
-          For every remaining block above the base row, its value must equal the product of at least two overlapping supporter blocks below it
-          (and it must be stable). If the entire top row collapses, you lose.
-        </p>
       </div>
 
       {showSolved && <div style={{ animation: "fadeIn 0.5s ease-out", padding: "10px 28px", marginBottom: 14, background: "#e8f5e9", border: "2px solid #4caf50", borderRadius: 8, fontSize: 16, fontWeight: 800, color: "#2e7d32" }}>SOLVED!</div>}
@@ -450,7 +443,10 @@ export default function FactorVolcanoGame({ initialPuzzleIdx = 0, mode = "today"
         </button>
       )}
 
-      <div style={{ border: "2px solid #1a1a1a", borderRadius: 2, padding: "8px", background: "#ffffff", overflow: "hidden" }}>
+      <div
+        style={{ border: "2px solid #1a1a1a", borderRadius: 2, padding: "8px", background: "#ffffff", overflow: "hidden" }}
+        onClick={() => setPendingRemoveId(null)}
+      >
         <svg width={svgW} height={svgH} viewBox={`0 0 ${svgW} ${svgH}`} style={{ display: "block", maxWidth: "100%", height: "auto" }}>
           {/* Connection lines */}
           {won &&
@@ -493,25 +489,21 @@ export default function FactorVolcanoGame({ initialPuzzleIdx = 0, mode = "today"
             const falling = fallingSet.has(block.id);
             const frame = fallFrames[block.id] || 0;
             const isTopBlock = block.row === topRowAll;
-            const isHov = hovered === block.id && !busy;
+            const isPending = pendingRemoveId === block.id && !busy && !won && !lost;
             const isWinActivated = won && block.row <= winAnimRow;
-            const isHoveredSupport = hoveredSupportIds.has(block.id) && hovered !== block.id;
 
             let fill = "#2b4570";
             let textFill = "#ffffff";
             if (isWinActivated) fill = "#e65100";
-            else if (isHov) fill = "#3a5a8c";
+            else if (isPending) fill = "#d32f2f";
 
             // Highlight outlines
             let stroke = "none";
             let strokeWidth = 0;
             if (isWinActivated) {
               stroke = "none";
-            } else if (isHov) {
-              stroke = "#00aaff";
-              strokeWidth = 3;
-            } else if (isHoveredSupport) {
-              stroke = "#ffd166";
+            } else if (isPending) {
+              stroke = "#a91f1f";
               strokeWidth = 3;
             }
 
@@ -530,11 +522,10 @@ export default function FactorVolcanoGame({ initialPuzzleIdx = 0, mode = "today"
                 transform={gTransform}
                 opacity={gOpacity}
                 style={isTopBlock ? { cursor: "default" } : undefined}
-                onClick={() => handleClick(block)}
-                onMouseEnter={() => {
-                  if (!isTopBlock && !busy && !won && !lost) setHovered(block.id);
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleClick(block);
                 }}
-                onMouseLeave={() => setHovered(null)}
               >
                 <rect
                   className="body"
@@ -559,7 +550,7 @@ export default function FactorVolcanoGame({ initialPuzzleIdx = 0, mode = "today"
                   fill={textFill}
                   style={{ pointerEvents: "none" }}
                 >
-                  {block.value}
+                  {isPending ? "Remove" : block.value}
                 </text>
               </g>
             );
